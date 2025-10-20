@@ -1,7 +1,8 @@
-ultralytics==8.0.114
+ultralytics>=8.3.0
 pandas
 opencv-python
 numpy
 scipy
 easyocr
 filterpy
+git+https://github.com/abewley/sort.git

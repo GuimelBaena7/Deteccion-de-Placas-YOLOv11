@@ -1,5 +1,7 @@
 import string
 import easyocr
+import cv2
+import numpy as np
 
 # Initialize the OCR reader
 reader = easyocr.Reader(['en'], gpu=False)
@@ -110,21 +112,29 @@ def read_license_plate(license_plate_crop):
     Read the license plate text from the given cropped image.
 
     Args:
-        license_plate_crop (PIL.Image.Image): Cropped image containing the license plate.
+        license_plate_crop (numpy.ndarray): Cropped image containing the license plate.
 
     Returns:
         tuple: Tuple containing the formatted license plate text and its confidence score.
     """
+    
+    # Verificar que la imagen no esté vacía
+    if license_plate_crop is None or license_plate_crop.size == 0:
+        return None, None
+    
+    try:
+        detections = reader.readtext(license_plate_crop)
 
-    detections = reader.readtext(license_plate_crop)
+        for detection in detections:
+            bbox, text, score = detection
 
-    for detection in detections:
-        bbox, text, score = detection
+            text = text.upper().replace(' ', '')
 
-        text = text.upper().replace(' ', '')
-
-        if license_complies_format(text):
-            return format_license(text), score
+            if license_complies_format(text):
+                return format_license(text), score
+    except Exception as e:
+        print(f"Error en OCR: {e}")
+        return None, None
 
     return None, None
 
