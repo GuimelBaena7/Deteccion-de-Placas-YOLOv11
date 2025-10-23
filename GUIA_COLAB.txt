@@ -1,0 +1,319 @@
+GUÍA COMPLETA PARA SUBIR PROYECTO DE DETECCIÓN DE PLACAS A GOOGLE COLAB
+================================================================================
+
+PASO 1: PREPARAR ARCHIVOS LOCALMENTE
+------------------------------------
+
+1.1. Crear archivo colab_main.py (versión optimizada para Colab):
+
+```python
+# Instalar dependencias
+!pip install ultralytics>=8.3.0 pandas opencv-python numpy scipy easyocr filterpy
+
+# Importar librerías
+from ultralytics import YOLO
+import cv2
+import numpy as np
+import easyocr
+import string
+from google.colab import files
+from google.colab import drive
+import os
+
+# Montar Google Drive (opcional)
+drive.mount('/content/drive')
+
+# Funciones utilitarias integradas
+class LicensePlateDetector:
+    def __init__(self):
+        self.reader = easyocr.Reader(['en'], gpu=True)
+        self.dict_char_to_int = {'O': '0', 'I': '1', 'J': '3', 'A': '4', 'G': '6', 'S': '5'}
+        self.dict_int_to_char = {'0': 'O', '1': 'I', '3': 'J', '4': 'A', '6': 'G', '5': 'S'}
+        
+    def license_complies_format(self, text):
+        if len(text) != 7:
+            return False
+        return (text[0] in string.ascii_uppercase or text[0] in self.dict_int_to_char.keys()) and \
+               (text[1] in string.ascii_uppercase or text[1] in self.dict_int_to_char.keys()) and \
+               (text[2] in '0123456789' or text[2] in self.dict_char_to_int.keys()) and \
+               (text[3] in '0123456789' or text[3] in self.dict_char_to_int.keys()) and \
+               (text[4] in string.ascii_uppercase or text[4] in self.dict_int_to_char.keys()) and \
+               (text[5] in string.ascii_uppercase or text[5] in self.dict_int_to_char.keys()) and \
+               (text[6] in string.ascii_uppercase or text[6] in self.dict_int_to_char.keys())
+    
+    def format_license(self, text):
+        license_plate_ = ''
+        mapping = {0: self.dict_int_to_char, 1: self.dict_int_to_char, 4: self.dict_int_to_char, 
+                  5: self.dict_int_to_char, 6: self.dict_int_to_char, 2: self.dict_char_to_int, 3: self.dict_char_to_int}
+        for j in range(7):
+            if text[j] in mapping[j].keys():
+                license_plate_ += mapping[j][text[j]]
+            else:
+                license_plate_ += text[j]
+        return license_plate_
+    
+    def read_license_plate(self, license_plate_crop):
+        if license_plate_crop is None or license_plate_crop.size == 0:
+            return None, None
+        try:
+            detections = self.reader.readtext(license_plate_crop)
+            for detection in detections:
+                bbox, text, score = detection
+                text = text.upper().replace(' ', '')
+                if self.license_complies_format(text):
+                    return self.format_license(text), score
+        except Exception as e:
+            print(f"Error en OCR: {e}")
+        return None, None
+    
+    def get_car(self, license_plate, vehicle_track_ids):
+        x1, y1, x2, y2, score, class_id = license_plate
+        for j, (xcar1, ycar1, xcar2, ycar2, car_id) in enumerate(vehicle_track_ids):
+            if x1 > xcar1 and y1 > ycar1 and x2 < xcar2 and y2 < ycar2:
+                return vehicle_track_ids[j]
+        return -1, -1, -1, -1, -1
+
+# Función principal de detección
+def detect_license_plates(video_path, license_model_path):
+    # Inicializar detector
+    detector = LicensePlateDetector()
+    
+    # Cargar modelos
+    coco_model = YOLO('yolov8n.pt')
+    license_plate_detector = YOLO(license_model_path)
+    
+    # Cargar video
+    cap = cv2.VideoCapture(video_path)
+    
+    vehicles = [2, 3, 5, 7]  # IDs de vehículos en COCO
+    results = {}
+    
+    frame_nmr = -1
+    ret = True
+    
+    while ret:
+        frame_nmr += 1
+        ret, frame = cap.read()
+        
+        if ret:
+            results[frame_nmr] = {}
+            
+            # Detectar vehículos
+            detections = coco_model(frame)[0]
+            detections_ = []
+            
+            if detections.boxes is not None:
+                for detection in detections.boxes.data.tolist():
+                    x1, y1, x2, y2, score, class_id = detection
+                    if int(class_id) in vehicles:
+                        detections_.append([x1, y1, x2, y2, score])
+            
+            # Simular tracking simple (sin SORT para simplificar)
+            track_ids = [[*det, i] for i, det in enumerate(detections_)]
+            
+            # Detectar placas
+            license_plates = license_plate_detector(frame)[0]
+            
+            if license_plates.boxes is not None:
+                for license_plate in license_plates.boxes.data.tolist():
+                    x1, y1, x2, y2, score, class_id = license_plate
+                    
+                    # Asignar placa a vehículo
+                    xcar1, ycar1, xcar2, ycar2, car_id = detector.get_car(license_plate, track_ids)
+                    
+                    if car_id != -1:
+                        # Recortar placa
+                        license_plate_crop = frame[int(y1):int(y2), int(x1):int(x2), :]
+                        
+                        # Procesar placa
+                        license_plate_crop_gray = cv2.cvtColor(license_plate_crop, cv2.COLOR_BGR2GRAY)
+                        _, license_plate_crop_thresh = cv2.threshold(license_plate_crop_gray, 64, 255, cv2.THRESH_BINARY_INV)
+                        
+                        # Leer texto de placa
+                        license_plate_text, license_plate_text_score = detector.read_license_plate(license_plate_crop_thresh)
+                        
+                        if license_plate_text is not None:
+                            results[frame_nmr][car_id] = {
+                                'car': {'bbox': [xcar1, ycar1, xcar2, ycar2]},
+                                'license_plate': {
+                                    'bbox': [x1, y1, x2, y2],
+                                    'text': license_plate_text,
+                                    'bbox_score': score,
+                                    'text_score': license_plate_text_score
+                                }
+                            }
+                            print(f"Frame {frame_nmr}: Placa detectada: {license_plate_text}")
+    
+    cap.release()
+    return results
+
+# Función para guardar resultados
+def save_results(results, output_path):
+    with open(output_path, 'w') as f:
+        f.write('frame_nmr,car_id,car_bbox,license_plate_bbox,license_plate_bbox_score,license_number,license_number_score\n')
+        
+        for frame_nmr in results.keys():
+            for car_id in results[frame_nmr].keys():
+                data = results[frame_nmr][car_id]
+                if 'car' in data and 'license_plate' in data and 'text' in data['license_plate']:
+                    f.write(f"{frame_nmr},{car_id},"
+                           f"[{' '.join(map(str, data['car']['bbox']))}],"
+                           f"[{' '.join(map(str, data['license_plate']['bbox']))}],"
+                           f"{data['license_plate']['bbox_score']},"
+                           f"{data['license_plate']['text']},"
+                           f"{data['license_plate']['text_score']}\n")
+
+# EJECUTAR DETECCIÓN
+print("=== DETECTOR DE PLACAS EN COLAB ===")
+print("1. Sube tu video")
+print("2. Sube el modelo license_plate_detector.pt")
+
+# Subir archivos
+uploaded = files.upload()
+
+# Verificar archivos subidos
+video_file = None
+model_file = None
+
+for filename in uploaded.keys():
+    if filename.endswith(('.mp4', '.avi', '.mov')):
+        video_file = filename
+    elif filename == 'license_plate_detector.pt':
+        model_file = filename
+
+if video_file and model_file:
+    print(f"Procesando video: {video_file}")
+    print(f"Usando modelo: {model_file}")
+    
+    # Ejecutar detección
+    results = detect_license_plates(video_file, model_file)
+    
+    # Guardar resultados
+    save_results(results, 'resultados_placas.csv')
+    
+    print("¡Detección completada!")
+    print("Descargando resultados...")
+    
+    # Descargar resultados
+    files.download('resultados_placas.csv')
+else:
+    print("Error: Asegúrate de subir un video y el modelo license_plate_detector.pt")
+```
+
+1.2. Crear archivo requirements_colab.txt:
+
+ultralytics>=8.3.0
+pandas
+opencv-python
+numpy
+scipy
+easyocr
+filterpy
+
+PASO 2: SUBIR A GOOGLE COLAB
+-----------------------------
+
+2.1. Ir a https://colab.research.google.com/
+
+2.2. Crear nuevo notebook:
+   - Clic en "Nuevo notebook"
+   - Cambiar nombre a "Deteccion_Placas_YOLOv11"
+
+2.3. En la primera celda, copiar y pegar todo el código de colab_main.py
+
+2.4. Ejecutar la celda (Ctrl+Enter o clic en play)
+
+PASO 3: PREPARAR ARCHIVOS NECESARIOS
+------------------------------------
+
+3.1. Tener listos estos archivos en tu computadora:
+   - Tu video de prueba (.mp4, .avi, .mov)
+   - El archivo license_plate_detector.pt (modelo entrenado)
+
+3.2. Cuando ejecutes el código en Colab:
+   - Aparecerá un botón "Elegir archivos"
+   - Sube primero el video
+   - Luego sube el modelo license_plate_detector.pt
+
+PASO 4: EJECUCIÓN EN COLAB
+--------------------------
+
+4.1. El código automáticamente:
+   - Instalará todas las dependencias
+   - Cargará los modelos YOLO
+   - Procesará el video frame por frame
+   - Detectará vehículos y placas
+   - Leerá el texto de las placas con OCR
+   - Generará un archivo CSV con resultados
+
+4.2. Al finalizar:
+   - Se descargará automáticamente "resultados_placas.csv"
+   - El archivo contiene todas las detecciones con coordenadas y texto
+
+PASO 5: VERSIÓN ALTERNATIVA CON GOOGLE DRIVE
+--------------------------------------------
+
+Si prefieres usar Google Drive para almacenar archivos:
+
+5.1. Sube tus archivos a Google Drive:
+   - Crea carpeta "DeteccionPlacas" en Drive
+   - Sube video y modelo a esa carpeta
+
+5.2. Modifica las rutas en el código:
+   ```python
+   # Después de montar Drive
+   video_path = '/content/drive/MyDrive/DeteccionPlacas/tu_video.mp4'
+   model_path = '/content/drive/MyDrive/DeteccionPlacas/license_plate_detector.pt'
+   
+   # Ejecutar detección
+   results = detect_license_plates(video_path, model_path)
+   ```
+
+PASO 6: OPTIMIZACIONES PARA COLAB
+---------------------------------
+
+6.1. Usar GPU:
+   - Runtime > Change runtime type > GPU
+
+6.2. Para videos largos:
+   - Procesar solo cada N frames: `if frame_nmr % 5 == 0:`
+   - Limitar número de frames: `if frame_nmr > 1000: break`
+
+6.3. Monitorear memoria:
+   ```python
+   import psutil
+   print(f"Memoria usada: {psutil.virtual_memory().percent}%")
+   ```
+
+PASO 7: SOLUCIÓN DE PROBLEMAS COMUNES
+-------------------------------------
+
+7.1. Error de memoria:
+   - Reducir resolución del video
+   - Procesar menos frames
+   - Reiniciar runtime
+
+7.2. Error de GPU:
+   - Verificar que GPU esté habilitada
+   - Usar CPU si es necesario: `gpu=False` en EasyOCR
+
+7.3. Modelo no encontrado:
+   - Verificar que license_plate_detector.pt se subió correctamente
+   - Verificar nombre exacto del archivo
+
+PASO 8: ESTRUCTURA FINAL EN COLAB
+---------------------------------
+
+Tu notebook tendrá:
+├── Celda 1: Código completo integrado
+├── Celda 2: (Opcional) Visualización de resultados
+└── Celda 3: (Opcional) Análisis de datos
+
+NOTAS IMPORTANTES:
+- El código está optimizado para Colab (sin dependencias externas complejas)
+- Incluye manejo de errores y validaciones
+- Compatible con diferentes formatos de video
+- Genera resultados descargables automáticamente
+- Funciona tanto con archivos subidos como con Google Drive
+
+¡Tu proyecto estará listo para funcionar en Colab siguiendo esta guía!
