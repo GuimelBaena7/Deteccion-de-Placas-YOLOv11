@@ -16,7 +16,8 @@ coco_model = YOLO('yolo11n.pt')  # YOLOv11 nano model
 license_plate_detector = YOLO('license_plate_detector.pt')
 
 # load video
-cap = cv2.VideoCapture('./video.mp4')
+ruta_video = input("👉 Ingresa la ruta o nombre del archivo de video: ")
+cap = cv2.VideoCapture(ruta_video)
 
 vehicles = [2, 3, 5, 7]
 
