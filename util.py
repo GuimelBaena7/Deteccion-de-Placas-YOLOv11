@@ -21,9 +21,13 @@ def write_csv(results, output_path):
         for frame_nmr in results.keys():
             for car_id in results[frame_nmr].keys():
                 data = results[frame_nmr][car_id]
+
                 if 'car' in data and 'license_plate' in data:
                     lp = data['license_plate']
-                    f.write(f"{frame_nmr},{car_id},{data['car']['bbox']},{lp['bbox']},{lp['bbox_score']},{lp['text']},{lp['text_score']}\n")
+                    car_bbox = [float(x) if isinstance(x, (int, float, np.floating)) else 0 for x in data['car']['bbox']]
+                    lp_bbox = [float(x) if isinstance(x, (int, float, np.floating)) else 0 for x in lp['bbox']]
+                    lp_bbox_score = float(lp['bbox_score']) if isinstance(lp['bbox_score'], (int, float, np.floating)) else 0
+                    lp_text_score = float(lp['text_score']) if isinstance(lp['text_score'], (int, float, np.floating)) else 0
 
 # ----------------------------------------------------------
 # 🧩 Mejorada: Validación flexible para placas colombianas
