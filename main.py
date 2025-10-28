@@ -5,7 +5,9 @@ import numpy as np
 import util
 from sort.sort import *
 from util import get_car, read_license_plate, write_csv
-
+# Crear carpeta "imagenes" si no existe
+import os
+os.makedirs("imagenes", exist_ok=True)
 
 results = {}
 
@@ -62,8 +64,13 @@ while ret:
 
                     # crop license plate
                     license_plate_crop = frame[int(y1):int(y2), int(x1): int(x2), :]
-                    cv2.imshow("🔍 Placa detectada", license_plate_crop)
-                    cv2.waitKey(1)
+                    # Guardar la imagen recortada de la placa
+                    try:
+                        nombre_imagen = f"imagenes/placa_frame{frame_nmr}_car{car_id}.jpg"
+                        cv2.imwrite(nombre_imagen, license_plate_crop)
+                        print(f"💾 Placa guardada: {nombre_imagen}")
+                    except Exception as e:
+                        print(f"⚠️ Error al guardar imagen de placa: {e}")
 
                     # read license plate number
                     license_plate_text, license_plate_text_score = read_license_plate(license_plate_crop)
