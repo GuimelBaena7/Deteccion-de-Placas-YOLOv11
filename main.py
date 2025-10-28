@@ -38,7 +38,8 @@ while ret:
                 if int(class_id) in vehicles:
                     detections_.append([x1, y1, x2, y2, score])
 
-            
+        print(f"🟩 Frame {frame_nmr}: Vehículos detectados = {num_vehiculos}")
+
         # track vehicles
         if len(detections_) == 0:
             detections_ = np.empty((0, 5))
@@ -71,6 +72,7 @@ while ret:
                                                                         'text': license_plate_text,
                                                                         'bbox_score': score,
                                                                         'text_score': license_plate_text_score}}
+        print(f"🟦 Frame {frame_nmr}: Placas detectadas = {num_placas}")                        
 
 # write results
 write_csv(results, './test.csv')
