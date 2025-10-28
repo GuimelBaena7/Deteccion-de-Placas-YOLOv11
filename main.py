@@ -63,12 +63,8 @@ while ret:
                     # crop license plate
                     license_plate_crop = frame[int(y1):int(y2), int(x1): int(x2), :]
 
-                    # process license plate
-                    license_plate_crop_gray = cv2.cvtColor(license_plate_crop, cv2.COLOR_BGR2GRAY)
-                    _, license_plate_crop_thresh = cv2.threshold(license_plate_crop_gray, 64, 255, cv2.THRESH_BINARY_INV)
-
                     # read license plate number
-                    license_plate_text, license_plate_text_score = read_license_plate(license_plate_crop_thresh)
+                    license_plate_text, license_plate_text_score = read_license_plate(license_plate_crop)
 
                     if license_plate_text is not None:
                         results[frame_nmr][car_id] = {'car': {'bbox': [xcar1, ycar1, xcar2, ycar2]},
