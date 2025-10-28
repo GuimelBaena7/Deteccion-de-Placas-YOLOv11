@@ -32,11 +32,13 @@ while ret:
         # detect vehicles
         detections = coco_model(frame)[0]
         detections_ = []
+        num_vehiculos = 0
         if detections.boxes is not None:
             for detection in detections.boxes.data.tolist():
                 x1, y1, x2, y2, score, class_id = detection
                 if int(class_id) in vehicles:
                     detections_.append([x1, y1, x2, y2, score])
+                    num_vehiculos += 1
 
         print(f"🟩 Frame {frame_nmr}: Vehículos detectados = {num_vehiculos}")
 
@@ -47,8 +49,10 @@ while ret:
 
         # detect license plates
         license_plates = license_plate_detector(frame)[0]
+        num_placas = 0
         if license_plates.boxes is not None:
             for license_plate in license_plates.boxes.data.tolist():
+                num_placas += 1
                 x1, y1, x2, y2, score, class_id = license_plate
 
                 # assign license plate to car
