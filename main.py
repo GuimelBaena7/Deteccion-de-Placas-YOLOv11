@@ -62,6 +62,8 @@ while ret:
 
                     # crop license plate
                     license_plate_crop = frame[int(y1):int(y2), int(x1): int(x2), :]
+                    cv2.imshow("🔍 Placa detectada", license_plate_crop)
+                    cv2.waitKey(1)
 
                     # read license plate number
                     license_plate_text, license_plate_text_score = read_license_plate(license_plate_crop)
